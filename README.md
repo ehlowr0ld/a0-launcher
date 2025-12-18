@@ -61,6 +61,17 @@ This is also useful when running a vendor-built executable but testing content f
 
 ## Development
 
+### Service Versions (Docker Version Management)
+
+This repo includes a "Service Versions" screen (Docker-backed) that can install, update, switch, and roll back the backend service.
+
+Notes:
+- Requires Docker Desktop/Engine installed and running.
+- Optional dev overrides:
+  - `A0_BACKEND_GITHUB_REPO="owner/repo"` (override the GitHub Releases catalog source)
+  - `A0_BACKEND_IMAGE_REPO="namespace/name"` (override the image repo to pull/run)
+- The UI in `app/` is bundled into `content.json` by CI and downloaded at runtime. For end-to-end UI testing, publish a release with your `content.json` and run with `A0_LAUNCHER_GITHUB_REPO="your-user/a0-launcher"` (see "Fork Testing (End-to-End)").
+
 ### Prerequisites
 
 - Node.js 20+

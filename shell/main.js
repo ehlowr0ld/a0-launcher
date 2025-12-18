@@ -2,6 +2,7 @@ const { app, BrowserWindow, net, ipcMain } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
+const serviceVersions = require('./service_versions');
 
 // Handle Squirrel.Windows startup events
 if (require('electron-squirrel-startup')) {
@@ -287,6 +288,273 @@ ipcMain.handle('get-content-version', async () => {
     return meta?.version || 'unknown';
   } catch {
     return 'unknown';
+  }
+});
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function sanitizeServiceVersionsState(state) {
+  const versionsIn = Array.isArray(state?.versions) ? state.versions : [];
+  const retainedIn = Array.isArray(state?.retainedInstances) ? state.retainedInstances : [];
+  const policyIn = isPlainObject(state?.retentionPolicy) ? state.retentionPolicy : {};
+
+  const allowedCategory = new Set(['official_release', 'local_build']);
+  const allowedAvailability = new Set(['available', 'installed', 'update_available', 'installing', 'error']);
+  const allowedInstallability = new Set(['unknown', 'installable', 'not_yet_available']);
+
+  const versions = [];
+  for (const v of versionsIn) {
+    if (!isPlainObject(v)) continue;
+    const id = typeof v.id === 'string' ? v.id : '';
+    const displayVersion = typeof v.displayVersion === 'string' ? v.displayVersion : '';
+    const category = typeof v.category === 'string' ? v.category : '';
+    const availability = typeof v.availability === 'string' ? v.availability : '';
+    const isActive = typeof v.isActive === 'boolean' ? v.isActive : false;
+
+    if (!id || !displayVersion) continue;
+    if (!allowedCategory.has(category)) continue;
+    if (!allowedAvailability.has(availability)) continue;
+
+    const out = {
+      id,
+      displayVersion,
+      category,
+      availability,
+      isActive
+    };
+
+    if (Array.isArray(v.channelBadges) && v.channelBadges.every((x) => typeof x === 'string')) {
+      out.channelBadges = v.channelBadges;
+    }
+
+    if (v.installability === null) {
+      out.installability = null;
+    } else if (typeof v.installability === 'string' && allowedInstallability.has(v.installability)) {
+      out.installability = v.installability;
+    }
+
+    if (v.matchHint === null) {
+      out.matchHint = null;
+    } else if (typeof v.matchHint === 'string') {
+      out.matchHint = v.matchHint;
+    }
+
+    if (v.publishedAt === null) {
+      out.publishedAt = null;
+    } else if (typeof v.publishedAt === 'string') {
+      out.publishedAt = v.publishedAt;
+    }
+
+    if (v.sizeBytes === null) {
+      out.sizeBytes = null;
+    } else if (Number.isFinite(Number(v.sizeBytes))) {
+      out.sizeBytes = Number(v.sizeBytes);
+    }
+
+    versions.push(out);
+  }
+
+  const retainedInstances = [];
+  for (const r of retainedIn) {
+    if (!isPlainObject(r)) continue;
+    const containerId = typeof r.containerId === 'string' ? r.containerId : '';
+    const containerName = typeof r.containerName === 'string' ? r.containerName : '';
+    const versionTag = typeof r.versionTag === 'string' ? r.versionTag : '';
+    const retainedAt = typeof r.retainedAt === 'string' ? r.retainedAt : '';
+    if (!containerId || !containerName || !versionTag || !retainedAt) continue;
+    const out = { containerId, containerName, versionTag, retainedAt };
+    if (Number.isFinite(Number(r.createdAt))) out.createdAt = Number(r.createdAt);
+    if (Number.isFinite(Number(r.sizeBytes))) out.sizeBytes = Number(r.sizeBytes);
+    retainedInstances.push(out);
+  }
+
+  const keepCount = Number.isFinite(Number(policyIn.keepCount)) ? Number(policyIn.keepCount) : 1;
+  const retentionPolicy = { keepCount: Math.max(0, Math.min(20, Math.floor(keepCount))) };
+
+  const outState = {
+    versions,
+    retainedInstances,
+    retentionPolicy
+  };
+
+  if (typeof state?.lastSyncedAt === 'string') outState.lastSyncedAt = state.lastSyncedAt;
+  if (typeof state?.offline === 'boolean') outState.offline = state.offline;
+  if (isPlainObject(state?.storage)) {
+    const s = state.storage;
+    const normalizeNullableInt = (value) => {
+      if (value === null) return null;
+      const n = Number(value);
+      if (!Number.isFinite(n)) return null;
+      return Math.max(0, Math.floor(n));
+    };
+
+    const storage = {};
+
+    if (s.dockerRootDir === null) {
+      storage.dockerRootDir = null;
+    } else if (typeof s.dockerRootDir === 'string') {
+      storage.dockerRootDir = s.dockerRootDir;
+    }
+
+    if ('freeBytes' in s) storage.freeBytes = normalizeNullableInt(s.freeBytes);
+    if ('usedBytes' in s) storage.usedBytes = normalizeNullableInt(s.usedBytes);
+    if ('estimateAfterUpdateBytes' in s) storage.estimateAfterUpdateBytes = normalizeNullableInt(s.estimateAfterUpdateBytes);
+
+    outState.storage = storage;
+  }
+
+  return outState;
+}
+
+function sanitizeServiceVersionsProgress(progress) {
+  if (!isPlainObject(progress)) return null;
+  const out = {};
+
+  if (typeof progress.opId === 'string') out.opId = progress.opId;
+  if (typeof progress.type === 'string') out.type = progress.type;
+  if (typeof progress.status === 'string') out.status = progress.status;
+  if (typeof progress.startedAt === 'string') out.startedAt = progress.startedAt;
+  if (typeof progress.finishedAt === 'string') out.finishedAt = progress.finishedAt;
+  if (typeof progress.targetVersionTag === 'string') out.targetVersionTag = progress.targetVersionTag;
+
+  if (Number.isFinite(Number(progress.progress))) out.progress = Number(progress.progress);
+  if (typeof progress.message === 'string') out.message = progress.message;
+  if (typeof progress.error === 'string') out.error = progress.error;
+
+  return out.opId ? out : null;
+}
+
+function sendServiceVersionsEvent(channel, payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const wc = mainWindow.webContents;
+  if (!wc || wc.isDestroyed()) return;
+  wc.send(channel, payload);
+}
+
+serviceVersions.events.on('state', (state) => {
+  try {
+    sendServiceVersionsEvent('service-versions:state', sanitizeServiceVersionsState(state));
+  } catch {
+    // ignore
+  }
+});
+
+serviceVersions.events.on('progress', (progress) => {
+  const sanitized = sanitizeServiceVersionsProgress(progress);
+  if (sanitized) sendServiceVersionsEvent('service-versions:progress', sanitized);
+});
+
+ipcMain.handle('service-versions:getState', async () => {
+  try {
+    const state = await serviceVersions.getServiceVersionsState();
+    return sanitizeServiceVersionsState(state);
+  } catch (error) {
+    return serviceVersions.toErrorResponse(error);
+  }
+});
+
+ipcMain.handle('service-versions:refresh', async () => {
+  try {
+    const state = await serviceVersions.refreshServiceVersions({ forceRefresh: true });
+    return sanitizeServiceVersionsState(state);
+  } catch (error) {
+    return serviceVersions.toErrorResponse(error);
+  }
+});
+
+ipcMain.handle('service-versions:install', async (_event, body) => {
+  try {
+    if (!isPlainObject(body)) return serviceVersions.toErrorResponse({ code: 'INVALID_INPUT', message: 'Invalid request' });
+    const tag = typeof body.tag === 'string' ? body.tag : '';
+    const accepted = await serviceVersions.installOrSync(tag);
+    if (!accepted || typeof accepted.opId !== 'string') {
+      return serviceVersions.toErrorResponse({ code: 'INTERNAL_ERROR', message: 'Install did not return an opId' });
+    }
+    return { opId: accepted.opId };
+  } catch (error) {
+    return serviceVersions.toErrorResponse(error);
+  }
+});
+
+ipcMain.handle('service-versions:setRetentionPolicy', async (_event, body) => {
+  try {
+    if (!isPlainObject(body)) return serviceVersions.toErrorResponse({ code: 'INVALID_INPUT', message: 'Invalid request' });
+    const keepCount = body.keepCount;
+    const policy = await serviceVersions.setRetentionPolicy(keepCount);
+    return { keepCount: policy.keepCount };
+  } catch (error) {
+    return serviceVersions.toErrorResponse(error);
+  }
+});
+
+ipcMain.handle('service-versions:deleteRetainedInstance', async (_event, body) => {
+  try {
+    if (!isPlainObject(body)) return serviceVersions.toErrorResponse({ code: 'INVALID_INPUT', message: 'Invalid request' });
+    const containerId = typeof body.containerId === 'string' ? body.containerId : '';
+    const accepted = await serviceVersions.deleteRetainedInstance(containerId);
+    if (!accepted || typeof accepted.opId !== 'string') {
+      return serviceVersions.toErrorResponse({ code: 'INTERNAL_ERROR', message: 'Delete did not return an opId' });
+    }
+    return { opId: accepted.opId };
+  } catch (error) {
+    return serviceVersions.toErrorResponse(error);
+  }
+});
+
+ipcMain.handle('service-versions:updateToLatest', async (_event, body) => {
+  try {
+    if (!isPlainObject(body)) return serviceVersions.toErrorResponse({ code: 'INVALID_INPUT', message: 'Invalid request' });
+    const dataLossAck = typeof body.dataLossAck === 'string' ? body.dataLossAck : '';
+    const accepted = await serviceVersions.updateToLatest(dataLossAck);
+    if (!accepted || typeof accepted.opId !== 'string') {
+      return serviceVersions.toErrorResponse({ code: 'INTERNAL_ERROR', message: 'Update did not return an opId' });
+    }
+    return { opId: accepted.opId };
+  } catch (error) {
+    return serviceVersions.toErrorResponse(error);
+  }
+});
+
+ipcMain.handle('service-versions:activate', async (_event, body) => {
+  try {
+    if (!isPlainObject(body)) return serviceVersions.toErrorResponse({ code: 'INVALID_INPUT', message: 'Invalid request' });
+    const tag = typeof body.tag === 'string' ? body.tag : '';
+    const dataLossAck = typeof body.dataLossAck === 'string' ? body.dataLossAck : '';
+    const accepted = await serviceVersions.activateVersion(tag, dataLossAck);
+    if (!accepted || typeof accepted.opId !== 'string') {
+      return serviceVersions.toErrorResponse({ code: 'INTERNAL_ERROR', message: 'Activate did not return an opId' });
+    }
+    return { opId: accepted.opId };
+  } catch (error) {
+    return serviceVersions.toErrorResponse(error);
+  }
+});
+
+ipcMain.handle('service-versions:activateRetainedInstance', async (_event, body) => {
+  try {
+    if (!isPlainObject(body)) return serviceVersions.toErrorResponse({ code: 'INVALID_INPUT', message: 'Invalid request' });
+    const containerId = typeof body.containerId === 'string' ? body.containerId : '';
+    const dataLossAck = typeof body.dataLossAck === 'string' ? body.dataLossAck : '';
+    const accepted = await serviceVersions.activateRetainedInstance(containerId, dataLossAck);
+    if (!accepted || typeof accepted.opId !== 'string') {
+      return serviceVersions.toErrorResponse({ code: 'INTERNAL_ERROR', message: 'Rollback did not return an opId' });
+    }
+    return { opId: accepted.opId };
+  } catch (error) {
+    return serviceVersions.toErrorResponse(error);
+  }
+});
+
+ipcMain.handle('service-versions:cancel', async (_event, body) => {
+  try {
+    if (!isPlainObject(body)) return serviceVersions.toErrorResponse({ code: 'INVALID_INPUT', message: 'Invalid request' });
+    const opId = typeof body.opId === 'string' ? body.opId : '';
+    const result = await serviceVersions.cancelOperation(opId);
+    return { canceled: !!result?.canceled };
+  } catch (error) {
+    return serviceVersions.toErrorResponse(error);
   }
 });
 
