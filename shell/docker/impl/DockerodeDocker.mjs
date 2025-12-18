@@ -204,6 +204,8 @@ export class DockerodeDocker extends DockerInterface {
       message: null,
       canCancel: true,
       startedAt,
+      _layers: new Map(),
+      _maxOverallProgress: 0,
       _stream: null,
       _abortListener: null
     };
@@ -256,13 +258,41 @@ export class DockerodeDocker extends DockerInterface {
               ? Number(evt.progressDetail.total)
               : null;
 
-            let percent = null;
+            let layerPercent = null;
             if (current !== null && total !== null && total > 0) {
-              percent = Math.max(0, Math.min(100, Math.floor((current / total) * 100)));
+              layerPercent = Math.max(0, Math.min(100, Math.floor((current / total) * 100)));
+            }
+
+            // Docker pull progress events are typically per-layer. If we surface per-layer percent as the
+            // overall percent, UIs will flicker between multiple layer percentages. Aggregate across layers.
+            if (id && (current !== null || total !== null)) {
+              const prev = pullState._layers.get(id) || { current: 0, total: null };
+              const next = { ...prev };
+              if (current !== null) next.current = current;
+              if (total !== null) next.total = total;
+              pullState._layers.set(id, next);
+            }
+
+            let overall = null;
+            let sumCurrent = 0;
+            let sumTotal = 0;
+            for (const v of pullState._layers.values()) {
+              const t = Number(v?.total);
+              if (!Number.isFinite(t) || t <= 0) continue;
+              const c = Number(v?.current);
+              const cc = Number.isFinite(c) ? Math.max(0, Math.min(c, t)) : 0;
+              sumTotal += t;
+              sumCurrent += cc;
+            }
+            if (sumTotal > 0) {
+              overall = Math.max(0, Math.min(100, Math.floor((sumCurrent / sumTotal) * 100)));
+              // Guardrail: avoid regressions when new layers appear mid-stream.
+              overall = Math.max(Number(pullState._maxOverallProgress) || 0, overall);
+              pullState._maxOverallProgress = overall;
             }
 
             pullState.message = status;
-            pullState.progress = percent;
+            pullState.progress = overall;
 
             if (onProgress) {
               try {
@@ -273,7 +303,8 @@ export class DockerodeDocker extends DockerInterface {
                   id,
                   current,
                   total,
-                  progress: percent
+                  progress: pullState.progress,
+                  layerProgress: layerPercent
                 });
               } catch {
                 // do not let UI callback break the pull
