@@ -29,7 +29,9 @@
     "electron": "^33.2.0"
   },
   "dependencies": {
-    "electron-squirrel-startup": "^1.0.1"
+    "dockerode": "^4.0.9",
+    "electron-squirrel-startup": "^1.0.1",
+    "semver": "^7.7.3"
   },
   "build": {
     "mac": {
