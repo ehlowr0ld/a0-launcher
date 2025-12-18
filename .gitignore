@@ -138,3 +138,18 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 App.zip
+
+# SpecKit
+# Note: Some environments (via global gitignore) may ignore `.specify/**` by
+# default. This repo tracks the SpecKit project assets, while keeping secrets
+# and caches excluded.
+!.specify/
+!.specify/memory/
+!.specify/memory/constitution.md
+
+!.cursor
+!.cursor/commands
+!.cursor/commands/**
+
+# Generated build metadata (lets forks default to their own releases)
+shell/build-info.json

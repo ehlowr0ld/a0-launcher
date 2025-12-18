@@ -1,6 +1,7 @@
 const { app, BrowserWindow, net, ipcMain } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
 
 // Handle Squirrel.Windows startup events
 if (require('electron-squirrel-startup')) {
@@ -8,9 +9,38 @@ if (require('electron-squirrel-startup')) {
 }
 
 // Constants
-const GITHUB_REPO = 'agent0ai/a0-launcher';
+const DEFAULT_GITHUB_REPO = 'agent0ai/a0-launcher';
+const BUILD_INFO_FILE = path.join(__dirname, 'build-info.json');
+const GITHUB_REPO_ENV_VAR = 'A0_LAUNCHER_GITHUB_REPO';
+
+function normalizeGithubRepo(value) {
+  const v = (value || '').trim();
+  if (!v) return '';
+  if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(v)) return v;
+  return '';
+}
+
+function getGithubRepo() {
+  const fromEnv = normalizeGithubRepo(process.env[GITHUB_REPO_ENV_VAR]);
+  if (fromEnv) return fromEnv;
+
+  try {
+    const raw = fsSync.readFileSync(BUILD_INFO_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    const fromFile = normalizeGithubRepo(parsed?.githubRepo);
+    if (fromFile) return fromFile;
+  } catch {
+    // ignore
+  }
+
+  return DEFAULT_GITHUB_REPO;
+}
+
+const GITHUB_REPO = getGithubRepo();
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 const CONTENT_ASSET_NAME = 'content.json';
+
+console.log(`Using GitHub content repo: ${GITHUB_REPO}`);
 
 // Paths
 const CONTENT_DIR = path.join(app.getPath('userData'), 'app_content');

@@ -1,0 +1,373 @@
+openapi: 3.0.3
+info:
+  title: A0 Launcher - Service Versions IPC Contract
+  version: 0.1.0
+  description: |
+    This document models Electron IPC (invoke/handle + push events) as an API contract.
+    All operations are executed in the Electron main process. The renderer accesses them
+    only via a whitelisted preload `contextBridge` surface (constitution Gate A).
+
+servers:
+  - url: ipc://a0-launcher
+
+paths:
+  /service-versions/state:
+    get:
+      operationId: getServiceVersionsState
+      summary: Get current service version state
+      responses:
+        "200":
+          description: Current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceVersionsState"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /service-versions/refresh:
+    post:
+      operationId: refreshServiceVersions
+      summary: Refresh remote and local version information
+      responses:
+        "200":
+          description: Updated state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceVersionsState"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /service-versions/install:
+    post:
+      operationId: installServiceVersion
+      summary: Install a specific official version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [tag]
+              properties:
+                tag:
+                  type: string
+                  description: Version tag to install/sync (for example "v1.2.3" or "testing")
+      responses:
+        "202":
+          description: Install operation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationAccepted"
+        "409":
+          description: Another operation is already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /service-versions/activate:
+    post:
+      operationId: activateServiceVersion
+      summary: Activate a specific installed version (may trigger data-loss warning in UI)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [tag, dataLossAck]
+              properties:
+                tag:
+                  type: string
+                dataLossAck:
+                  $ref: "#/components/schemas/DataLossAck"
+      responses:
+        "202":
+          description: Activate operation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationAccepted"
+        "409":
+          description: Another operation is already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /service-versions/update-to-latest:
+    post:
+      operationId: updateServiceToLatest
+      summary: Update the active service to the newest official release
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [dataLossAck]
+              properties:
+                dataLossAck:
+                  $ref: "#/components/schemas/DataLossAck"
+      responses:
+        "202":
+          description: Update operation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationAccepted"
+        "409":
+          description: Another operation is already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /service-versions/retention:
+    put:
+      operationId: setRetentionPolicy
+      summary: Set how many retained rollback instances to keep
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [keepCount]
+              properties:
+                keepCount:
+                  type: integer
+                  minimum: 0
+                  maximum: 20
+      responses:
+        "200":
+          description: Updated retention policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetentionPolicy"
+        "400":
+          description: Invalid retention policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /service-versions/instances/{containerId}:
+    delete:
+      operationId: deleteRetainedInstance
+      summary: Delete a retained instance (never active)
+      parameters:
+        - name: containerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Delete operation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationAccepted"
+        "400":
+          description: Cannot delete active instance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    DataLossAck:
+      type: string
+      description: |
+        UI-gated acknowledgement required before potentially destructive update/switch.
+        Matches `spec.md` FR-023.
+      enum: ["has_backup", "proceed_without_backup"]
+
+    OperationAccepted:
+      type: object
+      additionalProperties: false
+      required: [opId]
+      properties:
+        opId:
+          type: string
+          description: Operation identifier (used for progress/state correlation)
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+    RetentionPolicy:
+      type: object
+      additionalProperties: false
+      required: [keepCount]
+      properties:
+        keepCount:
+          type: integer
+          minimum: 0
+          maximum: 20
+
+    ServiceInstance:
+      type: object
+      additionalProperties: false
+      required: [containerId, containerName, versionTag, retainedAt]
+      properties:
+        containerId:
+          type: string
+        containerName:
+          type: string
+        versionTag:
+          type: string
+        retainedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: integer
+          description: Unix timestamp ms
+        sizeBytes:
+          type: integer
+          format: int64
+
+    ServiceVersion:
+      type: object
+      additionalProperties: false
+      required: [id, displayVersion, category, availability, isActive]
+      properties:
+        id:
+          type: string
+        displayVersion:
+          type: string
+        channelBadges:
+          type: array
+          description: Optional channel badges (for example ["latest"] or ["testing"])
+          items:
+            type: string
+        category:
+          type: string
+          enum: ["official_release", "local_build"]
+        availability:
+          type: string
+          enum: ["available", "installed", "update_available", "installing", "error"]
+        installability:
+          type: string
+          description: Whether the version is known installable (registry-validated) or not yet available
+          enum: ["unknown", "installable", "not_yet_available"]
+          nullable: true
+        matchHint:
+          type: string
+          description: Human-readable hint when a local image matches a canonical remote version (no internal identifiers)
+          nullable: true
+        isActive:
+          type: boolean
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        sizeBytes:
+          type: integer
+          format: int64
+          nullable: true
+
+    StorageInfo:
+      type: object
+      additionalProperties: false
+      properties:
+        dockerRootDir:
+          type: string
+          nullable: true
+        freeBytes:
+          type: integer
+          format: int64
+          nullable: true
+        usedBytes:
+          type: integer
+          format: int64
+          nullable: true
+        estimateAfterUpdateBytes:
+          type: integer
+          format: int64
+          nullable: true
+
+    ServiceVersionsState:
+      type: object
+      additionalProperties: false
+      required: [versions, retainedInstances, retentionPolicy]
+      properties:
+        versions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceVersion"
+        retainedInstances:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceInstance"
+        retentionPolicy:
+          $ref: "#/components/schemas/RetentionPolicy"
+        lastSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        offline:
+          type: boolean
+          nullable: true
+        storage:
+          $ref: "#/components/schemas/StorageInfo"
