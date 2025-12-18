@@ -28,26 +28,26 @@ description: "Tasks for implementing Docker Version Management (Stage 1 Docker i
 
 **Purpose**: Implement the ESM abstract base class and module loading strategy.
 
-- [ ] T001 Create the ESM abstract base class in `shell/docker/DockerInterface.mjs` (JSDoc typedefs + abstract method stubs)
-- [ ] T002 [P] Implement `detectEnvironment()` in `shell/docker/DockerInterface.mjs` (OS + docker availability + flavor best-effort; honor `DOCKER_HOST` parsing for `unix:`/`npipe:`/`tcp:`/`http(s):` where applicable)
-- [ ] T003 [P] Implement `static async get()` singleton selector in `shell/docker/DockerInterface.mjs` (dynamic import of implementation modules; cache instance)
-- [ ] T004 [P] Create default implementation skeleton in `shell/docker/impl/DockerodeDocker.mjs` (implements all abstract methods) and add `dockerode` to `package.json` (update `package-lock.json`)
-- [ ] T005 [P] Create Docker Hub registry client in `shell/docker/impl/DockerHubRegistry.mjs` (token flow with `expires_in` handling + tags/list pagination `n`/`last` + `Link: ...; rel="next"` + HEAD manifest digest with stable `Accept` ordering; best-effort use the user's existing Docker registry auth context when available, with no in-app credential UI/storage; never log or return credential material)
-- [ ] T006 [P] Add a CommonJS adapter in `shell/docker/getDocker.js` (exports `async function getDocker()` that loads `DockerInterface.mjs` via `import()` and returns the singleton)
+- [X] T001 Create the ESM abstract base class in `shell/docker/DockerInterface.mjs` (JSDoc typedefs + abstract method stubs)
+- [X] T002 [P] Implement `detectEnvironment()` in `shell/docker/DockerInterface.mjs` (OS + docker availability + flavor best-effort; honor `DOCKER_HOST` parsing for `unix:`/`npipe:`/`tcp:`/`http(s):` where applicable)
+- [X] T003 [P] Implement `static async get()` singleton selector in `shell/docker/DockerInterface.mjs` (dynamic import of implementation modules; cache instance)
+- [X] T004 [P] Create default implementation skeleton in `shell/docker/impl/DockerodeDocker.mjs` (implements all abstract methods) and add `dockerode` to `package.json` (update `package-lock.json`)
+- [X] T005 [P] Create Docker Hub registry client in `shell/docker/impl/DockerHubRegistry.mjs` (token flow with `expires_in` handling + tags/list pagination `n`/`last` + `Link: ...; rel="next"` + HEAD manifest digest with stable `Accept` ordering; best-effort use the user's existing Docker registry auth context when available, with no in-app credential UI/storage; never log or return credential material)
+- [X] T006 [P] Add a CommonJS adapter in `shell/docker/getDocker.js` (exports `async function getDocker()` that loads `DockerInterface.mjs` via `import()` and returns the singleton)
 
 ### Phase 2: Stage 1 Default Implementation (DockerodeDocker)
 
 **Purpose**: Deliver the full required Docker interface surface + best-effort cancellation semantics.
 
-- [ ] T007 Implement `listRemoteTags(imageRepo)` in `shell/docker/impl/DockerHubRegistry.mjs` and expose via `shell/docker/impl/DockerodeDocker.mjs`
-- [ ] T008 Implement `getRemoteDigest(imageRepo, tag)` in `shell/docker/impl/DockerHubRegistry.mjs` and expose via `shell/docker/impl/DockerodeDocker.mjs`
-- [ ] T009 Implement `listLocalImages(imageRepo)` in `shell/docker/impl/DockerodeDocker.mjs` (tags + image id/digest + size + created)
-- [ ] T010 Implement `removeLocalImage(imageRef)` in `shell/docker/impl/DockerodeDocker.mjs`
-- [ ] T011 Implement `pullImage(imageRef)` with progress tracking in `shell/docker/impl/DockerodeDocker.mjs` (use dockerode `followProgress`; track in-flight pulls; tolerate events without totals/ids)
-- [ ] T012 Implement best-effort pull cancellation in `shell/docker/impl/DockerodeDocker.mjs` (keep pull stream reference; cancel via `stream.destroy()`; mark aborted_client; document that daemon may continue)
-- [ ] T013 Implement `listContainers(imageRepo)` in `shell/docker/impl/DockerodeDocker.mjs` (include tag + status/state)
-- [ ] T014 Implement container lifecycle methods in `shell/docker/impl/DockerodeDocker.mjs` (create/start/stop/restart/delete/inspect with passed-in create params)
-- [ ] T015 Implement structured error codes and environment diagnostics returned by `detectEnvironment()` in `shell/docker/DockerInterface.mjs` and `shell/docker/impl/DockerodeDocker.mjs` (daemon unavailable, permission denied, etc.; include rate-limit classification and preserve headers for backoff decisions)
+- [X] T007 Implement `listRemoteTags(imageRepo)` in `shell/docker/impl/DockerHubRegistry.mjs` and expose via `shell/docker/impl/DockerodeDocker.mjs`
+- [X] T008 Implement `getRemoteDigest(imageRepo, tag)` in `shell/docker/impl/DockerHubRegistry.mjs` and expose via `shell/docker/impl/DockerodeDocker.mjs`
+- [X] T009 Implement `listLocalImages(imageRepo)` in `shell/docker/impl/DockerodeDocker.mjs` (tags + image id/digest + size + created)
+- [X] T010 Implement `removeLocalImage(imageRef)` in `shell/docker/impl/DockerodeDocker.mjs`
+- [X] T011 Implement `pullImage(imageRef)` with progress tracking in `shell/docker/impl/DockerodeDocker.mjs` (use dockerode `followProgress`; track in-flight pulls; tolerate events without totals/ids)
+- [X] T012 Implement best-effort pull cancellation in `shell/docker/impl/DockerodeDocker.mjs` (keep pull stream reference; cancel via `stream.destroy()`; mark aborted_client; document that daemon may continue)
+- [X] T013 Implement `listContainers(imageRepo)` in `shell/docker/impl/DockerodeDocker.mjs` (include tag + status/state)
+- [X] T014 Implement container lifecycle methods in `shell/docker/impl/DockerodeDocker.mjs` (create/start/stop/restart/delete/inspect with passed-in create params)
+- [X] T015 Implement structured error codes and environment diagnostics returned by `detectEnvironment()` in `shell/docker/DockerInterface.mjs` and `shell/docker/impl/DockerodeDocker.mjs` (daemon unavailable, permission denied, etc.; include rate-limit classification and preserve headers for backoff decisions)
 
 ### Stage 1 Checkpoint (MANDATORY STOP)
 
