@@ -63,13 +63,13 @@ Stop development after completing Stage 1. At this point, the repo has a reusabl
 
 WARNING: No user story work can begin until this phase is complete.
 
-- [ ] T016 Create Stage 2 module skeleton in `shell/service_versions/index.js` (uses `shell/docker/getDocker.js`; no direct dockerode/registry protocol code; define allowlisted image repo + tag validation helpers used by IPC boundary)
-- [ ] T017 [P] Implement GitHub Releases client + caching in `shell/service_versions/releases_client.js` (semver list source; default cache TTL 24h; manual refresh forces re-check) and add `semver` to `package.json` (update `package-lock.json`)
-- [ ] T018 [P] Implement persistence for retention + installability caches in `shell/service_versions/state_store.js` (userData JSON read/write)
-- [ ] T019 [P] Implement instance naming and ordering helpers in `shell/service_versions/retention.js` (sanitize, retained-at timestamp, parse)
-- [ ] T020 [P] Implement UI-safe error mapping in `shell/service_versions/errors.js` (map DockerInterface errors to non-technical messages)
-- [ ] T021 Implement reconciliation and derived state in `shell/service_versions/index.js` (semver releases from GH validated via registry digest; first-class `testing`; `latest` badge; canonical local tags + custom local builds; digest match hints; divergence detection; installability caching: cache "not yet available" 15m, cache "installable" 24h; manual refresh forces re-check)
-- [ ] T022 Implement single-operation concurrency guard in `shell/service_versions/index.js` (prevent overlapping install/update/activate/delete)
+- [X] T016 Create Stage 2 module skeleton in `shell/service_versions/index.js` (uses `shell/docker/getDocker.js`; no direct dockerode/registry protocol code; define allowlisted image repo + tag validation helpers used by IPC boundary)
+- [X] T017 [P] Implement GitHub Releases client + caching in `shell/service_versions/releases_client.js` (semver list source; default cache TTL 24h; manual refresh forces re-check) and add `semver` to `package.json` (update `package-lock.json`)
+- [X] T018 [P] Implement persistence for retention + installability caches in `shell/service_versions/state_store.js` (userData JSON read/write)
+- [X] T019 [P] Implement instance naming and ordering helpers in `shell/service_versions/retention.js` (sanitize, retained-at timestamp, parse)
+- [X] T020 [P] Implement UI-safe error mapping in `shell/service_versions/errors.js` (map DockerInterface errors to non-technical messages)
+- [X] T021 Implement reconciliation and derived state in `shell/service_versions/index.js` (semver releases from GH validated via registry digest; first-class `testing`; `latest` badge; canonical local tags + custom local builds; digest match hints; divergence detection; installability caching: cache "not yet available" 15m, cache "installable" 24h; manual refresh forces re-check)
+- [X] T022 Implement single-operation concurrency guard in `shell/service_versions/index.js` (prevent overlapping install/update/activate/delete)
 
 **Checkpoint**: Stage 2 foundation ready - user story implementation can now begin.
 
@@ -83,14 +83,14 @@ WARNING: No user story work can begin until this phase is complete.
 
 ### Implementation for User Story 1
 
-- [ ] T023 [P] [US1] Add IPC handlers in `shell/main.js` (invoke channels `service-versions:getState` and `service-versions:refresh`; map to `contracts/ipc.openapi.yaml` operationIds getServiceVersionsState + refreshServiceVersions; validate IPC inputs and outbound payload shape) returning derived state from `shell/service_versions/index.js`
-- [ ] T024 [P] [US1] Expose `serviceVersionsAPI` in `shell/preload.js` (getState, refresh, installOrSync(tag), onStateChange/progress with unsubscribe)
-- [ ] T025 [P] [US1] Implement Service Versions UI scaffolding in `app/index.html` + `app/service_versions.js` + `app/service_versions.css` with non-technical copy
-- [ ] T026 [US1] Wire UI to state APIs in `app/service_versions.js` (render semver releases + Testing entry + latest badge; local builds section; retained instances; offline/runtime indicators; show "Update Available" indicator including the newest version number; suppress primary install/update actions when installability is known "not yet available"; avoid ambiguous labels like "Latest Release" without also showing the exact tag/version that will run)
-- [ ] T027 [P] [US1] Implement install/sync operation in `shell/service_versions/index.js` using DockerInterface pull + registry validation (supports semver tags and canonical `testing`; caches installability; emits progress)
-- [ ] T028 [US1] Wire install/sync IPC in `shell/main.js` + `shell/preload.js` and add install/sync actions + progress UI in `app/service_versions.js` (map to `contracts/ipc.openapi.yaml` operationId installServiceVersion; validate tag and enforce allowlisted image repo/tags at IPC boundary)
-- [ ] T029 [P] [US1] Implement retention policy read/write in `shell/service_versions/state_store.js` (default keepCount=1) and wire setRetentionPolicy IPC in `shell/main.js` + `shell/preload.js` (map to `contracts/ipc.openapi.yaml` operationId setRetentionPolicy; validate keepCount 0..20 at IPC boundary)
-- [ ] T030 [P] [US1] Implement delete retained instance operation in `shell/service_versions/index.js` (refuse delete of active; require containerId) and wire delete IPC + UI confirmation in `app/service_versions.js` (map to `contracts/ipc.openapi.yaml` operationId deleteRetainedInstance; validate containerId at IPC boundary)
+- [X] T023 [P] [US1] Add IPC handlers in `shell/main.js` (invoke channels `service-versions:getState` and `service-versions:refresh`; map to `contracts/ipc.openapi.yaml` operationIds getServiceVersionsState + refreshServiceVersions; validate IPC inputs and outbound payload shape) returning derived state from `shell/service_versions/index.js`
+- [X] T024 [P] [US1] Expose `serviceVersionsAPI` in `shell/preload.js` (getState, refresh, installOrSync(tag), onStateChange/progress with unsubscribe)
+- [X] T025 [P] [US1] Implement Service Versions UI scaffolding in `app/index.html` + `app/service_versions.js` + `app/service_versions.css` with non-technical copy
+- [X] T026 [US1] Wire UI to state APIs in `app/service_versions.js` (render semver releases + Testing entry + latest badge; local builds section; retained instances; offline/runtime indicators; show "Update Available" indicator including the newest version number; suppress primary install/update actions when installability is known "not yet available"; avoid ambiguous labels like "Latest Release" without also showing the exact tag/version that will run)
+- [X] T027 [P] [US1] Implement install/sync operation in `shell/service_versions/index.js` using DockerInterface pull + registry validation (supports semver tags and canonical `testing`; caches installability; emits progress)
+- [X] T028 [US1] Wire install/sync IPC in `shell/main.js` + `shell/preload.js` and add install/sync actions + progress UI in `app/service_versions.js` (map to `contracts/ipc.openapi.yaml` operationId installServiceVersion; validate tag and enforce allowlisted image repo/tags at IPC boundary)
+- [X] T029 [P] [US1] Implement retention policy read/write in `shell/service_versions/state_store.js` (default keepCount=1) and wire setRetentionPolicy IPC in `shell/main.js` + `shell/preload.js` (map to `contracts/ipc.openapi.yaml` operationId setRetentionPolicy; validate keepCount 0..20 at IPC boundary)
+- [X] T030 [P] [US1] Implement delete retained instance operation in `shell/service_versions/index.js` (refuse delete of active; require containerId) and wire delete IPC + UI confirmation in `app/service_versions.js` (map to `contracts/ipc.openapi.yaml` operationId deleteRetainedInstance; validate containerId at IPC boundary)
 
 **Checkpoint**: User Story 1 is functional and independently testable.
 
@@ -104,13 +104,13 @@ WARNING: No user story work can begin until this phase is complete.
 
 ### Implementation for User Story 2
 
-- [ ] T031 [US2] Update IPC contract in `specs/001-docker-version-management/contracts/ipc.openapi.yaml` to include cancel + rollback/activate-retained operations (and document event channels)
-- [ ] T032 [P] [US2] Implement updateToLatest(dataLossAck) in `shell/service_versions/index.js` (determine latest semver from GH; validate via registry digest; pull before stop; retain previous; enforce retention; fail-safe ordering)
-- [ ] T033 [P] [US2] Implement active container create/start logic in `shell/service_versions/index.js` using DockerInterface container create/start/stop/inspect (no direct dockerode calls)
-- [ ] T034 [US2] Wire update-to-latest IPC + preload method in `shell/main.js` and `shell/preload.js` (map to `contracts/ipc.openapi.yaml` operationId updateServiceToLatest; requires dataLossAck; validate enum at IPC boundary)
-- [ ] T035 [US2] Implement data loss warning modal in `app/service_versions.js` (includes the exact target tag/version; choices: has_backup vs proceed_without_backup; cancel)
-- [ ] T036 [US2] Implement rollback action from retained instances in `app/service_versions.js` and wire to rollback IPC (with explicit warning)
-- [ ] T037 [US2] Implement cancel operation in `shell/service_versions/index.js` (best-effort cancel via DockerInterface for pulls), expose via `shell/main.js` + `shell/preload.js`, and wire Cancel UI in `app/service_versions.js`
+- [X] T031 [US2] Update IPC contract in `specs/001-docker-version-management/contracts/ipc.openapi.yaml` to include cancel + rollback/activate-retained operations (and document event channels)
+- [X] T032 [P] [US2] Implement updateToLatest(dataLossAck) in `shell/service_versions/index.js` (determine latest semver from GH; validate via registry digest; pull before stop; retain previous; enforce retention; fail-safe ordering)
+- [X] T033 [P] [US2] Implement active container create/start logic in `shell/service_versions/index.js` using DockerInterface container create/start/stop/inspect (no direct dockerode calls)
+- [X] T034 [US2] Wire update-to-latest IPC + preload method in `shell/main.js` and `shell/preload.js` (map to `contracts/ipc.openapi.yaml` operationId updateServiceToLatest; requires dataLossAck; validate enum at IPC boundary)
+- [X] T035 [US2] Implement data loss warning modal in `app/service_versions.js` (includes the exact target tag/version; choices: has_backup vs proceed_without_backup; cancel)
+- [X] T036 [US2] Implement rollback action from retained instances in `app/service_versions.js` and wire to rollback IPC (with explicit warning)
+- [X] T037 [US2] Implement cancel operation in `shell/service_versions/index.js` (best-effort cancel via DockerInterface for pulls), expose via `shell/main.js` + `shell/preload.js`, and wire Cancel UI in `app/service_versions.js`
 
 **Checkpoint**: User Stories 1 and 2 both work end-to-end.
 
@@ -124,9 +124,9 @@ WARNING: No user story work can begin until this phase is complete.
 
 ### Implementation for User Story 3
 
-- [ ] T038 [P] [US3] Implement activateVersion(tag, dataLossAck) in `shell/service_versions/index.js` (stop active; retain previous; start selected; enforce retention; uses DockerInterface)
-- [ ] T039 [US3] Wire activate IPC + preload method in `shell/main.js` and `shell/preload.js` and connect "Use This Version" action in `app/service_versions.js` (map to `contracts/ipc.openapi.yaml` operationId activateServiceVersion; validate tag and dataLossAck at IPC boundary)
-- [ ] T040 [US3] Update UI action state rules in `app/service_versions.js` (Installed vs Active vs Available vs Update Available; include first-class Testing preview; show exact version before activation; suppress primary install/update actions when installability is known "not yet available")
+- [X] T038 [P] [US3] Implement activateVersion(tag, dataLossAck) in `shell/service_versions/index.js` (stop active; retain previous; start selected; enforce retention; uses DockerInterface)
+- [X] T039 [US3] Wire activate IPC + preload method in `shell/main.js` and `shell/preload.js` and connect "Use This Version" action in `app/service_versions.js` (map to `contracts/ipc.openapi.yaml` operationId activateServiceVersion; validate tag and dataLossAck at IPC boundary)
+- [X] T040 [US3] Update UI action state rules in `app/service_versions.js` (Installed vs Active vs Available vs Update Available; include first-class Testing preview; show exact version before activation; suppress primary install/update actions when installability is known "not yet available")
 
 **Checkpoint**: User Story 3 is independently functional.
 
@@ -140,9 +140,9 @@ WARNING: No user story work can begin until this phase is complete.
 
 ### Implementation for User Story 4
 
-- [ ] T041 [P] [US4] Extend reconciliation in `shell/service_versions/index.js` to classify local images into canonical local builds vs custom local builds and compute digest match hints against canonical remote tags (`vX.Y.Z`, `testing`, `latest`)
-- [ ] T042 [US4] Update UI in `app/service_versions.js` to render canonical local builds distinctly and keep update prompts non-blocking when active is local_build
-- [ ] T043 [US4] Add explicit "Sync" affordance in `app/service_versions.js` for canonical local tags that diverge from remote and wire to install/sync operation
+- [X] T041 [P] [US4] Extend reconciliation in `shell/service_versions/index.js` to classify local images into canonical local builds vs custom local builds and compute digest match hints against canonical remote tags (`vX.Y.Z`, `testing`, `latest`)
+- [X] T042 [US4] Update UI in `app/service_versions.js` to render canonical local builds distinctly and keep update prompts non-blocking when active is local_build
+- [X] T043 [US4] Add explicit "Sync" affordance in `app/service_versions.js` for canonical local tags that diverge from remote and wire to install/sync operation
 
 **Checkpoint**: Developer/local build workflow is supported.
 
@@ -156,9 +156,9 @@ WARNING: No user story work can begin until this phase is complete.
 
 ### Implementation for User Story 5
 
-- [ ] T044 [P] [US5] Implement offline fallback + lastSyncedAt in `shell/service_versions/releases_client.js` (use cached releases; set offline flag)
-- [ ] T045 [US5] Update UI in `app/service_versions.js` to display offline indicator (and last successful check time when known) and suppress network-only actions while keeping installed activation available
-- [ ] T046 [US5] Ensure refresh behavior and error messages are user-friendly (no Docker terms) in `shell/service_versions/errors.js` and `app/service_versions.js`
+- [X] T044 [P] [US5] Implement offline fallback + lastSyncedAt in `shell/service_versions/releases_client.js` (use cached releases; set offline flag)
+- [X] T045 [US5] Update UI in `app/service_versions.js` to display offline indicator (and last successful check time when known) and suppress network-only actions while keeping installed activation available
+- [X] T046 [US5] Ensure refresh behavior and error messages are user-friendly (no Docker terms) in `shell/service_versions/errors.js` and `app/service_versions.js`
 
 **Checkpoint**: Offline mode meets the spec expectations.
 
@@ -168,11 +168,11 @@ WARNING: No user story work can begin until this phase is complete.
 
 **Purpose**: Improvements affecting multiple user stories, plus security and UX hardening.
 
-- [ ] T047 [P] Add storage usage reporting in `shell/service_versions/index.js` (via DockerInterface + best-effort filesystem info) and display it in `app/service_versions.js`
-- [ ] T048 [P] Add "free space after update" estimate (explicitly labeled estimate) in `shell/service_versions/index.js` and surface it in `app/service_versions.js`
-- [ ] T049 Update help/troubleshooting surface to isolate technical terms in `app/index.html` and update developer docs in `README.md`
-- [ ] T050 Security hardening: audit and tighten IPC param validation and allowlist enforcement for repos/tags in `shell/main.js` and `shell/service_versions/index.js` (ensure all handlers already validate; add extra defense-in-depth checks)
-- [ ] T051 Validate and update manual verification steps in `specs/001-docker-version-management/quickstart.md`
+- [X] T047 [P] Add storage usage reporting in `shell/service_versions/index.js` (via DockerInterface + best-effort filesystem info) and display it in `app/service_versions.js`
+- [X] T048 [P] Add "free space after update" estimate (explicitly labeled estimate) in `shell/service_versions/index.js` and surface it in `app/service_versions.js`
+- [X] T049 Update help/troubleshooting surface to isolate technical terms in `app/index.html` and update developer docs in `README.md`
+- [X] T050 Security hardening: audit and tighten IPC param validation and allowlist enforcement for repos/tags in `shell/main.js` and `shell/service_versions/index.js` (ensure all handlers already validate; add extra defense-in-depth checks)
+- [X] T051 Validate and update manual verification steps in `specs/001-docker-version-management/quickstart.md`
 
 ---
 

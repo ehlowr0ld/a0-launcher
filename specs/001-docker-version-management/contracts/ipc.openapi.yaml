@@ -7,6 +7,10 @@ info:
     All operations are executed in the Electron main process. The renderer accesses them
     only via a whitelisted preload `contextBridge` surface (constitution Gate A).
 
+    Event channels (push):
+    - `service-versions:state` (payload: ServiceVersionsState)
+    - `service-versions:progress` (payload: operation progress snapshots; shape is implementation-defined for now)
+
 servers:
   - url: ipc://a0-launcher
 
@@ -228,6 +232,94 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /service-versions/instances/{containerId}/activate:
+    post:
+      operationId: activateRetainedInstance
+      summary: Roll back by activating a retained instance (may trigger data-loss warning in UI)
+      parameters:
+        - name: containerId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [dataLossAck]
+              properties:
+                dataLossAck:
+                  $ref: "#/components/schemas/DataLossAck"
+      responses:
+        "202":
+          description: Rollback operation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationAccepted"
+        "400":
+          description: Cannot activate instance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Another operation is already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /service-versions/cancel:
+    post:
+      operationId: cancelServiceVersionsOperation
+      summary: Best-effort cancel an in-progress install/update operation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [opId]
+              properties:
+                opId:
+                  type: string
+      responses:
+        "200":
+          description: Cancel result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancelResult"
+        "404":
+          description: Operation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     DataLossAck:
@@ -245,6 +337,14 @@ components:
         opId:
           type: string
           description: Operation identifier (used for progress/state correlation)
+
+    CancelResult:
+      type: object
+      additionalProperties: false
+      required: [canceled]
+      properties:
+        canceled:
+          type: boolean
 
     ErrorResponse:
       type: object
