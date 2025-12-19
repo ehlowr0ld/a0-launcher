@@ -367,6 +367,12 @@ function sanitizeServiceVersionsState(state) {
       out.differsFromPublished = v.differsFromPublished;
     }
 
+    if (v.activeState === null) {
+      out.activeState = null;
+    } else if (typeof v.activeState === 'string') {
+      out.activeState = v.activeState;
+    }
+
     if (v.publishedAt === null) {
       out.publishedAt = null;
     } else if (typeof v.publishedAt === 'string') {
@@ -506,6 +512,30 @@ ipcMain.handle('service-versions:install', async (_event, body) => {
   }
 });
 
+ipcMain.handle('service-versions:startActive', async () => {
+  try {
+    const accepted = await serviceVersions.startActiveInstance();
+    if (!accepted || typeof accepted.opId !== 'string') {
+      return serviceVersions.toErrorResponse({ code: 'INTERNAL_ERROR', message: 'Start did not return an opId' });
+    }
+    return { opId: accepted.opId };
+  } catch (error) {
+    return serviceVersions.toErrorResponse(error);
+  }
+});
+
+ipcMain.handle('service-versions:stopActive', async () => {
+  try {
+    const accepted = await serviceVersions.stopActiveInstance();
+    if (!accepted || typeof accepted.opId !== 'string') {
+      return serviceVersions.toErrorResponse({ code: 'INTERNAL_ERROR', message: 'Stop did not return an opId' });
+    }
+    return { opId: accepted.opId };
+  } catch (error) {
+    return serviceVersions.toErrorResponse(error);
+  }
+});
+
 ipcMain.handle('service-versions:setRetentionPolicy', async (_event, body) => {
   try {
     if (!isPlainObject(body)) return serviceVersions.toErrorResponse({ code: 'INVALID_INPUT', message: 'Invalid request' });
@@ -588,7 +618,8 @@ ipcMain.handle('service-versions:cancel', async (_event, body) => {
 
 ipcMain.handle('service-versions:openUi', async () => {
   try {
-    const state = await serviceVersions.getServiceVersionsState();
+    // Refresh state to compute a best-effort UI URL from the currently active container.
+    const state = await serviceVersions.refreshServiceVersions({ forceRefresh: false });
     const url = typeof state?.uiUrl === 'string' ? state.uiUrl : '';
     if (!url) {
       return serviceVersions.toErrorResponse({ code: 'UI_UNAVAILABLE', message: 'Agent Zero UI is not available. Start a version first.' });

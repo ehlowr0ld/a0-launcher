@@ -129,19 +129,31 @@ function bestEffortUiUrlFromInspect(inspect) {
   const ports = inspect?.NetworkSettings?.Ports;
   if (!ports || typeof ports !== 'object') return null;
 
+  /** @type {{containerPort: number, hostPort: number}[]} */
   const candidates = [];
-  for (const bindings of Object.values(ports)) {
+  for (const [containerPortSpec, bindings] of Object.entries(ports)) {
+    const containerPort = Number(String(containerPortSpec || '').split('/')[0]);
+    if (!Number.isFinite(containerPort) || containerPort <= 0 || containerPort > 65535) continue;
     for (const b of Array.isArray(bindings) ? bindings : []) {
       const hostPort = Number(b?.HostPort);
       if (!Number.isFinite(hostPort) || hostPort <= 0 || hostPort > 65535) continue;
-      candidates.push(hostPort);
+      candidates.push({ containerPort, hostPort });
     }
   }
 
-  candidates.sort((a, b) => a - b);
-  const p = candidates[0];
-  if (!p) return null;
-  return `http://localhost:${p}/`;
+  if (!candidates.length) return null;
+
+  // Prefer typical HTTP ports first. Agent Zero currently exposes 80/tcp.
+  const preferredContainerPorts = [80, 7860, 3000, 8080, 5000, 9000, 9001, 9002];
+  for (const p of preferredContainerPorts) {
+    const match = candidates.find((c) => c.containerPort === p);
+    if (match) return `http://localhost:${match.hostPort}/`;
+  }
+
+  // Avoid SSH (22) as a UI target.
+  candidates.sort((a, b) => a.hostPort - b.hostPort);
+  const fallback = candidates.find((c) => c.containerPort !== 22) || candidates[0];
+  return `http://localhost:${fallback.hostPort}/`;
 }
 
 function computeImageBytesStats(localImages) {
@@ -281,9 +293,10 @@ async function buildDerivedState(options = {}) {
   const activeName = retention.getActiveContainerName(imageRepo);
   const activeContainer = (containers || []).find((c) => c && c.containerName === activeName) || null;
   const activeTag = activeContainer?.tag || null;
+  const activeState = typeof activeContainer?.state === 'string' ? activeContainer.state : null;
 
   let uiUrl = null;
-  if (activeContainer && activeContainer.containerId) {
+  if (activeContainer && activeContainer.containerId && String(activeState || '').toLowerCase() === 'running') {
     try {
       const inspect = await docker.inspectContainer(activeContainer.containerId);
       uiUrl = bestEffortUiUrlFromInspect(inspect);
@@ -417,6 +430,7 @@ async function buildDerivedState(options = {}) {
       digestHint,
       differsFromPublished,
       isActive,
+      activeState: isActive ? activeState : null,
       publishedAt: null,
       sizeBytes: img?.sizeBytes || null
     });
@@ -456,6 +470,7 @@ async function buildDerivedState(options = {}) {
       digestHint,
       differsFromPublished,
       isActive,
+      activeState: isActive ? activeState : null,
       publishedAt: r?.publishedAt || null,
       sizeBytes: img?.sizeBytes || null
     });
@@ -543,6 +558,7 @@ async function buildDerivedState(options = {}) {
       digestHint,
       differsFromPublished,
       isActive,
+      activeState: isActive ? activeState : null,
       publishedAt: null,
       sizeBytes: img?.sizeBytes || null
     });
@@ -766,8 +782,10 @@ async function installOrSync(tag) {
       const result = await docker.pullImage(imageRef, {
         signal: controller.signal,
         onProgress: (evt) => {
-          const p = Number.isFinite(Number(evt?.progress)) ? Number(evt.progress) : null;
-          updateOperationProgress({ progress: p, message: 'Downloading' });
+          const p = typeof evt?.progress === 'number' && Number.isFinite(evt.progress) ? evt.progress : null;
+          const phase = typeof evt?.phase === 'string' ? String(evt.phase).toLowerCase() : '';
+          const message = phase === 'extracting' ? 'Extracting' : 'Downloading';
+          updateOperationProgress({ progress: p, message });
         }
       });
 
@@ -787,6 +805,82 @@ async function installOrSync(tag) {
       finishOperation('failed', message);
     } finally {
       _abortControllers.delete(opId);
+      await refreshServiceVersions({ forceRefresh: false }).catch(() => {});
+    }
+  })().catch(() => {});
+
+  return { opId };
+}
+
+async function stopActiveInstance() {
+  const imageRepo = getBackendImageRepo();
+
+  requireNoRunningOperation();
+  const opId = beginOperation('stop', null);
+
+  (async () => {
+    try {
+      updateOperationProgress({ message: 'Stopping', progress: null });
+      const docker = await getDocker({ imageRepo });
+      const containers = await docker.listContainers(imageRepo);
+      const activeName = retention.getActiveContainerName(imageRepo);
+      const active = (containers || []).find((c) => c && c.containerName === activeName) || null;
+
+      if (!active || !active.containerId) {
+        const err = new Error('No active instance');
+        err.code = 'NO_ACTIVE_INSTANCE';
+        throw err;
+      }
+
+      const state = (active.state || '').toLowerCase();
+      if (state === 'running') {
+        await docker.stopContainer(active.containerId, { t: 10 });
+      }
+
+      finishOperation('completed', null);
+      updateOperationProgress({ progress: 100, message: 'Stopped' });
+    } catch (error) {
+      const message = mapDockerInterfaceErrorToUiMessage(error) || 'Stop failed';
+      finishOperation('failed', message);
+    } finally {
+      await refreshServiceVersions({ forceRefresh: false }).catch(() => {});
+    }
+  })().catch(() => {});
+
+  return { opId };
+}
+
+async function startActiveInstance() {
+  const imageRepo = getBackendImageRepo();
+
+  requireNoRunningOperation();
+  const opId = beginOperation('start', null);
+
+  (async () => {
+    try {
+      updateOperationProgress({ message: 'Starting', progress: null });
+      const docker = await getDocker({ imageRepo });
+      const containers = await docker.listContainers(imageRepo);
+      const activeName = retention.getActiveContainerName(imageRepo);
+      const active = (containers || []).find((c) => c && c.containerName === activeName) || null;
+
+      if (!active || !active.containerId) {
+        const err = new Error('No active instance');
+        err.code = 'NO_ACTIVE_INSTANCE';
+        throw err;
+      }
+
+      const state = (active.state || '').toLowerCase();
+      if (state !== 'running') {
+        await docker.startContainer(active.containerId);
+      }
+
+      finishOperation('completed', null);
+      updateOperationProgress({ progress: 100, message: 'Started' });
+    } catch (error) {
+      const message = mapDockerInterfaceErrorToUiMessage(error) || 'Start failed';
+      finishOperation('failed', message);
+    } finally {
       await refreshServiceVersions({ forceRefresh: false }).catch(() => {});
     }
   })().catch(() => {});
@@ -887,8 +981,10 @@ async function updateToLatest(dataLossAck) {
       const pullResult = await docker.pullImage(imageRefForTag(imageRepo, latest), {
         signal: controller.signal,
         onProgress: (evt) => {
-          const p = Number.isFinite(Number(evt?.progress)) ? Number(evt.progress) : null;
-          updateOperationProgress({ progress: p, message: 'Downloading' });
+          const p = typeof evt?.progress === 'number' && Number.isFinite(evt.progress) ? evt.progress : null;
+          const phase = typeof evt?.phase === 'string' ? String(evt.phase).toLowerCase() : '';
+          const message = phase === 'extracting' ? 'Extracting' : 'Downloading';
+          updateOperationProgress({ progress: p, message });
         }
       });
       _abortControllers.delete(opId);
@@ -1169,6 +1265,8 @@ module.exports = {
 
   // Operations (implemented in later tasks)
   installOrSync,
+  startActiveInstance,
+  stopActiveInstance,
   setRetentionPolicy,
   deleteRetainedInstance,
   updateToLatest,

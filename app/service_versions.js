@@ -124,7 +124,14 @@ function showDataLossModal(opts) {
 }
 
 function statusLabel(v, latestDisplay) {
-  if (v.isActive) return { text: 'Active', className: 'status status-active' };
+  if (v.isActive) {
+    const s = typeof v.activeState === 'string' ? v.activeState : '';
+    const running = !s || String(s).toLowerCase() === 'running';
+    return running
+      ? { text: 'Active', className: 'status status-active' }
+      : { text: 'Stopped', className: 'status status-unavailable' };
+  }
+  if (v.availability === 'installing') return { text: 'In progress', className: 'status status-installed' };
   if (v.availability === 'update_available') {
     const suffix = latestDisplay ? ` - ${latestDisplay}` : '';
     return { text: `Update Available${suffix}`, className: 'status status-update' };
@@ -132,6 +139,41 @@ function statusLabel(v, latestDisplay) {
   if (v.installability === 'not_yet_available') return { text: 'Not yet available', className: 'status status-unavailable' };
   if (v.availability === 'installed') return { text: 'Installed', className: 'status status-installed' };
   return { text: 'Available', className: 'status status-available' };
+}
+
+function beginButtonBusy(btn, label) {
+  if (!btn) return () => {};
+  const prevText = btn.textContent;
+  btn.disabled = true;
+  if (label) btn.textContent = label;
+  let restored = false;
+  return () => {
+    if (restored) return;
+    restored = true;
+    btn.disabled = false;
+    btn.textContent = prevText;
+  };
+}
+
+function getRunningOperationForVersion(v) {
+  if (!lastProgress || typeof lastProgress !== 'object') return null;
+  if (lastProgress.status !== 'running') return null;
+  if (!v || typeof v !== 'object' || typeof v.id !== 'string') return null;
+  const t = typeof lastProgress.targetVersionTag === 'string' ? lastProgress.targetVersionTag : '';
+  if (!t) return null;
+  return t === v.id ? lastProgress : null;
+}
+
+function operationLabelForVersion(v, op) {
+  const type = op && typeof op.type === 'string' ? op.type : '';
+  if (type === 'update') return 'Updating...';
+  if (type === 'activate') return 'Starting...';
+  if (type === 'start') return 'Starting...';
+  if (type === 'stop') return 'Stopping...';
+  if (v && v.differsFromPublished === true) return 'Syncing...';
+  const m = lastProgress && typeof lastProgress.message === 'string' ? lastProgress.message.trim().toLowerCase() : '';
+  if (m === 'extracting') return 'Extracting...';
+  return 'Downloading...';
 }
 
 function badgeClass(name) {
@@ -224,8 +266,17 @@ function renderState(state) {
   if (openUiBtn) {
     const url = state && typeof state === 'object' ? state.uiUrl : null;
     const hasUrl = typeof url === 'string' && url.trim();
-    openUiBtn.disabled = !hasUrl;
-    openUiBtn.title = hasUrl ? '' : 'Start Agent Zero to enable';
+    let canOpen = !!hasUrl;
+    if (!canOpen) {
+      const active = (state && Array.isArray(state.versions))
+        ? state.versions.find((v) => v && v.isActive)
+        : null;
+      const s = active && typeof active.activeState === 'string' ? active.activeState : '';
+      const running = !!active && (!s || String(s).toLowerCase() === 'running');
+      canOpen = running;
+    }
+    openUiBtn.disabled = !canOpen;
+    openUiBtn.title = canOpen ? '' : 'Start Agent Zero to enable';
   }
 
   const keepSelect = $('keepCountSelect');
@@ -310,6 +361,75 @@ function renderState(state) {
         const wrap = document.createElement('div');
         wrap.className = 'action-buttons';
 
+        const op = getRunningOperationForVersion(vv);
+        if (op) {
+          const btnBusy = document.createElement('button');
+          btnBusy.className = 'btn btn-small';
+          btnBusy.type = 'button';
+          btnBusy.disabled = true;
+          btnBusy.textContent = operationLabelForVersion(vv, op);
+          wrap.appendChild(btnBusy);
+          return wrap;
+        }
+
+        if (vv.isActive) {
+          // Keep Stop/Start in the same place where "Use" would be for inactive versions.
+          const s = typeof vv.activeState === 'string' ? vv.activeState : '';
+          const running = !s || String(s).toLowerCase() === 'running';
+
+          if (canUpdate) {
+            const btnUpdate = document.createElement('button');
+            btnUpdate.className = 'btn btn-primary btn-small';
+            btnUpdate.type = 'button';
+            btnUpdate.textContent = `Update to ${latestDisplayVersion}`;
+            btnUpdate.addEventListener('click', async () => {
+              const ack = await showDataLossModal({
+                title: 'Update Agent Zero',
+                detail: `Target version: ${latestDisplayVersion} (${latestTag})`
+              });
+              if (!ack) return;
+              const restoreBtn = beginButtonBusy(btnUpdate, 'Updating...');
+              setBanner('info', 'Starting update...');
+              try {
+                const res = await api.updateToLatest(ack);
+                if (isErrorResponse(res)) {
+                  setBanner('error', res.message);
+                  restoreBtn();
+                  return;
+                }
+                setBanner('info', 'Update started.');
+              } catch (e) {
+                restoreBtn();
+                setBanner('error', e && e.message ? e.message : 'Update failed');
+              }
+            });
+            wrap.appendChild(btnUpdate);
+          }
+
+          const btnToggle = document.createElement('button');
+          btnToggle.className = running ? 'btn btn-danger btn-small' : 'btn btn-primary btn-small';
+          btnToggle.type = 'button';
+          btnToggle.textContent = running ? 'Stop' : 'Start';
+          btnToggle.addEventListener('click', async () => {
+            const restoreBtn = beginButtonBusy(btnToggle, running ? 'Stopping...' : 'Starting...');
+            setBanner('info', running ? 'Stopping...' : 'Starting...');
+            try {
+              const res = running ? await api.stopActive() : await api.startActive();
+              if (isErrorResponse(res)) {
+                setBanner('error', res.message);
+                restoreBtn();
+                return;
+              }
+              setBanner('info', running ? 'Stop requested.' : 'Start requested.');
+            } catch (e) {
+              restoreBtn();
+              setBanner('error', e && e.message ? e.message : running ? 'Stop failed' : 'Start failed');
+            }
+          });
+          wrap.appendChild(btnToggle);
+          return wrap;
+        }
+
         if (canUpdate) {
           const btnUpdate = document.createElement('button');
           btnUpdate.className = 'btn btn-primary btn-small';
@@ -321,15 +441,18 @@ function renderState(state) {
               detail: `Target version: ${latestDisplayVersion} (${latestTag})`
             });
             if (!ack) return;
+            const restoreBtn = beginButtonBusy(btnUpdate, 'Updating...');
             setBanner('info', 'Starting update...');
             try {
               const res = await api.updateToLatest(ack);
               if (isErrorResponse(res)) {
                 setBanner('error', res.message);
+                restoreBtn();
                 return;
               }
               setBanner('info', 'Update started.');
             } catch (e) {
+              restoreBtn();
               setBanner('error', e && e.message ? e.message : 'Update failed');
             }
           });
@@ -347,15 +470,18 @@ function renderState(state) {
               detail: `Target version: ${vv.displayVersion} (${vv.id})`
             });
             if (!ack) return;
+            const restoreBtn = beginButtonBusy(btnActivate, 'Starting...');
             setBanner('info', 'Starting switch...');
             try {
               const res = await api.activateVersion(vv.id, ack);
               if (isErrorResponse(res)) {
                 setBanner('error', res.message);
+                restoreBtn();
                 return;
               }
               setBanner('info', 'Switch started.');
             } catch (e) {
+              restoreBtn();
               setBanner('error', e && e.message ? e.message : 'Switch failed');
             }
           });
@@ -378,15 +504,18 @@ function renderState(state) {
               'Sync will replace the locally installed image for this version with the published version. Continue?'
             );
             if (!ok) return;
+            const restoreBtn = beginButtonBusy(btnSync, 'Syncing...');
             setBanner('info', 'Starting sync...');
             try {
               const res = await api.installOrSync(vv.id);
               if (isErrorResponse(res)) {
                 setBanner('error', res.message);
+                restoreBtn();
                 return;
               }
               setBanner('info', 'Sync started.');
             } catch (e) {
+              restoreBtn();
               setBanner('error', e && e.message ? e.message : 'Sync failed');
             }
           });
@@ -399,15 +528,18 @@ function renderState(state) {
           btn.type = 'button';
           btn.textContent = 'Install';
           btn.addEventListener('click', async () => {
+            const restoreBtn = beginButtonBusy(btn, 'Downloading...');
             setBanner('info', 'Starting install...');
             try {
               const res = await api.installOrSync(vv.id);
               if (isErrorResponse(res)) {
                 setBanner('error', res.message);
+                restoreBtn();
                 return;
               }
               setBanner('info', 'Install started.');
             } catch (e) {
+              restoreBtn();
               setBanner('error', e && e.message ? e.message : 'Install failed');
             }
           });
@@ -425,11 +557,49 @@ function renderState(state) {
       renderActions: (vv) => {
         const api = window.serviceVersionsAPI;
         if (!api) return null;
-        if (vv.isActive) return null;
         if (vv.availability !== 'installed') return null;
 
         const wrap = document.createElement('div');
         wrap.className = 'action-buttons';
+
+        const op = getRunningOperationForVersion(vv);
+        if (op) {
+          const btnBusy = document.createElement('button');
+          btnBusy.className = 'btn btn-small';
+          btnBusy.type = 'button';
+          btnBusy.disabled = true;
+          btnBusy.textContent = operationLabelForVersion(vv, op);
+          wrap.appendChild(btnBusy);
+          return wrap;
+        }
+
+        if (vv.isActive) {
+          const s = typeof vv.activeState === 'string' ? vv.activeState : '';
+          const running = !s || String(s).toLowerCase() === 'running';
+
+          const btnToggle = document.createElement('button');
+          btnToggle.className = running ? 'btn btn-danger btn-small' : 'btn btn-primary btn-small';
+          btnToggle.type = 'button';
+          btnToggle.textContent = running ? 'Stop' : 'Start';
+          btnToggle.addEventListener('click', async () => {
+            const restoreBtn = beginButtonBusy(btnToggle, running ? 'Stopping...' : 'Starting...');
+            setBanner('info', running ? 'Stopping...' : 'Starting...');
+            try {
+              const res = running ? await api.stopActive() : await api.startActive();
+              if (isErrorResponse(res)) {
+                setBanner('error', res.message);
+                restoreBtn();
+                return;
+              }
+              setBanner('info', running ? 'Stop requested.' : 'Start requested.');
+            } catch (e) {
+              restoreBtn();
+              setBanner('error', e && e.message ? e.message : running ? 'Stop failed' : 'Start failed');
+            }
+          });
+          wrap.appendChild(btnToggle);
+          return wrap;
+        }
 
         const btnActivate = document.createElement('button');
         btnActivate.className = 'btn btn-small';
@@ -441,15 +611,18 @@ function renderState(state) {
             detail: `Target version: ${vv.displayVersion} (${vv.id})`
           });
           if (!ack) return;
+          const restoreBtn = beginButtonBusy(btnActivate, 'Starting...');
           setBanner('info', 'Starting switch...');
           try {
             const res = await api.activateVersion(vv.id, ack);
             if (isErrorResponse(res)) {
               setBanner('error', res.message);
+              restoreBtn();
               return;
             }
             setBanner('info', 'Switch started.');
           } catch (e) {
+            restoreBtn();
             setBanner('error', e && e.message ? e.message : 'Switch failed');
           }
         });
@@ -469,15 +642,18 @@ function renderState(state) {
           btnSync.addEventListener('click', async () => {
             const ok = window.confirm('Sync will replace this local build with the published version. Continue?');
             if (!ok) return;
+            const restoreBtn = beginButtonBusy(btnSync, 'Syncing...');
             setBanner('info', 'Starting sync...');
             try {
               const res = await api.installOrSync(vv.id);
               if (isErrorResponse(res)) {
                 setBanner('error', res.message);
+                restoreBtn();
                 return;
               }
               setBanner('info', 'Sync started.');
             } catch (e) {
+              restoreBtn();
               setBanner('error', e && e.message ? e.message : 'Sync failed');
             }
           });

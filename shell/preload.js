@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('serviceVersionsAPI', {
   getState: () => ipcRenderer.invoke('service-versions:getState'),
   refresh: () => ipcRenderer.invoke('service-versions:refresh'),
   installOrSync: (tag) => ipcRenderer.invoke('service-versions:install', { tag }),
+  startActive: () => ipcRenderer.invoke('service-versions:startActive'),
+  stopActive: () => ipcRenderer.invoke('service-versions:stopActive'),
   setRetentionPolicy: (keepCount) => ipcRenderer.invoke('service-versions:setRetentionPolicy', { keepCount }),
   deleteRetainedInstance: (containerId) =>
     ipcRenderer.invoke('service-versions:deleteRetainedInstance', { containerId }),

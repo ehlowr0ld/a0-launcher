@@ -46,6 +46,8 @@ function mapDockerInterfaceErrorToUiMessage(error) {
       return 'You cannot delete the active instance.';
     case 'NO_RELEASES':
       return 'No official versions are available right now.';
+    case 'NO_ACTIVE_INSTANCE':
+      return 'No active instance is available.';
     case 'CREATE_FAILED':
       return 'Unable to start the selected version.';
     case 'INVALID_TAG':

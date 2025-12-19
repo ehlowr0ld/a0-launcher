@@ -204,8 +204,13 @@ export class DockerodeDocker extends DockerInterface {
       message: null,
       canCancel: true,
       startedAt,
-      _layers: new Map(),
-      _maxOverallProgress: 0,
+      _phase: 'downloading',
+      _downloadLayers: new Map(),
+      _extractLayers: new Map(),
+      _lastDownloadSumTotal: 0,
+      _lastDownloadOverallProgress: 0,
+      _lastExtractSumTotal: 0,
+      _lastExtractOverallProgress: 0,
       _stream: null,
       _abortListener: null
     };
@@ -263,20 +268,66 @@ export class DockerodeDocker extends DockerInterface {
               layerPercent = Math.max(0, Math.min(100, Math.floor((current / total) * 100)));
             }
 
-            // Docker pull progress events are typically per-layer. If we surface per-layer percent as the
-            // overall percent, UIs will flicker between multiple layer percentages. Aggregate across layers.
-            if (id && (current !== null || total !== null)) {
-              const prev = pullState._layers.get(id) || { current: 0, total: null };
-              const next = { ...prev };
-              if (current !== null) next.current = current;
-              if (total !== null) next.total = total;
-              pullState._layers.set(id, next);
+            const statusNorm = (status || '').toLowerCase();
+            const isDownloading = statusNorm === 'downloading' || statusNorm.includes('downloading');
+            const isExtracting = statusNorm === 'extracting' || statusNorm.includes('extracting');
+            const isDownloadComplete = statusNorm.includes('download complete');
+            const isPullComplete = statusNorm.includes('pull complete');
+            const isAlreadyExists = statusNorm.includes('already exists');
+
+            let phaseChanged = false;
+            if (isExtracting && pullState._phase !== 'extracting') {
+              pullState._phase = 'extracting';
+              pullState._lastExtractSumTotal = 0;
+              pullState._lastExtractOverallProgress = 0;
+              phaseChanged = true;
             }
+
+            const markLayerComplete = isAlreadyExists || isDownloadComplete || isPullComplete;
+            const upsertLayer = (map, layerId) => {
+              if (!layerId) return;
+              const prev = map.get(layerId) || { current: 0, total: null };
+              const next = { ...prev };
+
+              if (total !== null) next.total = total;
+              if (current !== null) next.current = current;
+
+              // If we receive a completion-style status and we know a total, treat the layer as complete.
+              if (markLayerComplete && typeof next.total === 'number' && Number.isFinite(next.total) && next.total > 0) {
+                next.current = next.total;
+              }
+
+              // Clamp current to total when both known.
+              if (typeof next.total === 'number' && Number.isFinite(next.total) && next.total > 0) {
+                const c = Number(next.current);
+                next.current = Number.isFinite(c) ? Math.max(0, Math.min(c, next.total)) : 0;
+              }
+
+              map.set(layerId, next);
+            };
+
+            // Update per-phase layer maps using structured progressDetail.
+            if (id && (current !== null || total !== null || markLayerComplete)) {
+              if (isExtracting || isPullComplete) {
+                upsertLayer(pullState._extractLayers, id);
+              } else if (isDownloading || isDownloadComplete || (pullState._phase === 'downloading' && isAlreadyExists)) {
+                upsertLayer(pullState._downloadLayers, id);
+              } else if (pullState._phase === 'extracting' && isAlreadyExists) {
+                upsertLayer(pullState._extractLayers, id);
+              } else {
+                // Default: attribute to current phase.
+                upsertLayer(pullState._phase === 'extracting' ? pullState._extractLayers : pullState._downloadLayers, id);
+              }
+            }
+
+            const activePhase = pullState._phase;
+            const activeMap = activePhase === 'extracting' ? pullState._extractLayers : pullState._downloadLayers;
 
             let overall = null;
             let sumCurrent = 0;
             let sumTotal = 0;
-            for (const v of pullState._layers.values()) {
+
+            for (const v of activeMap.values()) {
               const t = Number(v?.total);
               if (!Number.isFinite(t) || t <= 0) continue;
               const c = Number(v?.current);
@@ -284,11 +335,42 @@ export class DockerodeDocker extends DockerInterface {
               sumTotal += t;
               sumCurrent += cc;
             }
+
             if (sumTotal > 0) {
               overall = Math.max(0, Math.min(100, Math.floor((sumCurrent / sumTotal) * 100)));
-              // Guardrail: avoid regressions when new layers appear mid-stream.
-              overall = Math.max(Number(pullState._maxOverallProgress) || 0, overall);
-              pullState._maxOverallProgress = overall;
+              // Avoid reporting 100% before completion; completion is signaled separately.
+              if (overall >= 100) overall = 99;
+
+              if (activePhase === 'extracting') {
+                const lastTotal = Number(pullState._lastExtractSumTotal) || 0;
+                const lastOverall = Number(pullState._lastExtractOverallProgress) || 0;
+
+                // Prevent minor regressions when the known total hasn't changed.
+                // If the known total grows (new layers discovered), allow progress to drop (more work discovered).
+                if (sumTotal <= lastTotal) {
+                  overall = Math.max(lastOverall, overall);
+                }
+
+                pullState._lastExtractSumTotal = sumTotal;
+                pullState._lastExtractOverallProgress = overall;
+              } else {
+                const lastTotal = Number(pullState._lastDownloadSumTotal) || 0;
+                const lastOverall = Number(pullState._lastDownloadOverallProgress) || 0;
+
+                if (sumTotal <= lastTotal) {
+                  overall = Math.max(lastOverall, overall);
+                }
+
+                pullState._lastDownloadSumTotal = sumTotal;
+                pullState._lastDownloadOverallProgress = overall;
+              }
+            }
+
+            if (phaseChanged) {
+              // Explicit reset at phase boundary for UX clarity.
+              overall = 0;
+              pullState._lastExtractSumTotal = 0;
+              pullState._lastExtractOverallProgress = 0;
             }
 
             pullState.message = status;
@@ -299,6 +381,8 @@ export class DockerodeDocker extends DockerInterface {
                 onProgress({
                   opId,
                   imageRef: ref,
+                  phase: pullState._phase,
+                  phaseChanged,
                   status,
                   id,
                   current,
